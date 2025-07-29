@@ -1,0 +1,42 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify workflow triggered
+      run: |
+        echo "Workflow triggered by: ${{ github.event_name }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "SHA: ${{ github.sha }}"
+
+    - name: Initialize Gradle
+      run: |
+        # Создаем минимальную структуру если её нет
+        if [ ! -f build.gradle ]; then
+          echo "plugins { id 'com.android.application' }" > build.gradle
+        fi
+        if [ ! -f settings.gradle ]; then
+          echo "rootProject.name = 'MyApp'" > settings.gradle
+        fi
+        
+        # Инициализируем Gradle Wrapper
+        gradle wrapper --gradle-version 8.2 --distribution-type bin
+        chmod +x gradlew
+
+    - name: Build APK
+      run: ./gradlew assembleDebug
+
+    - name: Archive APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
