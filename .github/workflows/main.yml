@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -20,15 +20,21 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Install Gradle Wrapper
+    - name: Setup Gradle Wrapper
       run: |
-        # Скачиваем свежий Gradle Wrapper 8.2
+        # Создаем минимальную структуру Gradle
+        if [ ! -f settings.gradle ]; then
+          echo "rootProject.name = 'IntegerSynth'" > settings.gradle
+          echo "include ':app'" >> settings.gradle
+        fi
+
+        # Скачиваем официальный Gradle Wrapper
         mkdir -p gradle/wrapper
-        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew -o gradlew
-        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew.bat -o gradlew.bat
-        curl -L https://github.com/gradle/gradle/raw/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+        curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew -o gradlew
+        curl -fsSL https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew.bat -o gradlew.bat
+        curl -fsSL https://github.com/gradle/gradle/raw/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
         
-        # Настраиваем конфиг
+        # Конфигурация wrapper
         cat > gradle/wrapper/gradle-wrapper.properties <<EOL
         distributionBase=GRADLE_USER_HOME
         distributionPath=wrapper/dists
@@ -36,26 +42,40 @@ jobs:
         zipStoreBase=GRADLE_USER_HOME
         zipStorePath=wrapper/dists
         EOL
-        
-        # Даем права
-        chmod +x gradlew
 
-    - name: Clean and fix manifest
+        # Права и проверка
+        chmod +x gradlew
+        ./gradlew --version || echo "Gradle check failed but continuing"
+
+    - name: Fix Android Manifest
       run: |
-        # Полная очистка
-        ./gradlew clean
-        rm -rf ~/.gradle/caches
-        
-        # Принудительно добавляем android:exported если его нет
-        if ! grep -q 'android:exported=' app/src/main/AndroidManifest.xml; then
-          sed -i '/<activity.*MainActivity/a \            android:exported="true"' app/src/main/AndroidManifest.xml
+        # Создаем манифест если его нет
+        if [ ! -f app/src/main/AndroidManifest.xml ]; then
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<EOL
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.example.integerprogressionsynth">
+            <application>
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOL
         fi
-        
-        # Проверяем результат
+
+        # Добавляем exported если отсутствует
+        sed -i '/<activity.*MainActivity/ { /android:exported/! s/$/ android:exported="true"/ }' app/src/main/AndroidManifest.xml
         cat app/src/main/AndroidManifest.xml
 
     - name: Build APK
       run: |
+        # Чистка и сборка
+        ./gradlew clean
         ./gradlew assembleDebug --stacktrace --no-daemon
 
     - name: Upload APK
