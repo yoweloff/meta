@@ -1,16 +1,9 @@
-name: Android Build and Publish APK
+name: Android CI
 
 on:
   push:
-    branches: [ "master" ]
-    paths:
-      - 'app/**'
-      - 'gradle/**'
-      - 'build.gradle'
-      - 'settings.gradle'
-      - '.github/workflows/android-ci.yml'
-  pull_request:
-    branches: [ "master" ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,31 +19,24 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: 'gradle'
+
+    - name: Add gradle.properties
+      run: |
+        echo "android.useAndroidX=true" >> gradle.properties
+        echo "android.enableJetifier=true" >> gradle.properties
+        cat gradle.properties
 
     - name: Setup Gradle Wrapper
       run: |
-        mkdir -p gradle/wrapper
-        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew -o gradlew
-        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew.bat -o gradlew.bat
-        curl -L https://github.com/gradle/gradle/raw/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
-        
-        cat > gradle/wrapper/gradle-wrapper.properties <<EOL
-        distributionBase=GRADLE_USER_HOME
-        distributionPath=wrapper/dists
-        distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
-        zipStoreBase=GRADLE_USER_HOME
-        zipStorePath=wrapper/dists
-        EOL
-        
+        ./gradlew wrapper --gradle-version 8.2 --distribution-type bin
         chmod +x gradlew
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+    - name: Build with Gradle
+      run: |
+        ./gradlew assembleDebug --stacktrace --no-daemon
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 3
