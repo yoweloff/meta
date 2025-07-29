@@ -1,13 +1,15 @@
-name: Android Build
+name: Android CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      JAVA_HOME: /usr/lib/jvm/temurin-17-jdk-amd64
 
     steps:
     - uses: actions/checkout@v4
@@ -18,19 +20,47 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Fix exported in Manifest
+    - name: Install Gradle Wrapper
       run: |
-        # Добавляем android:exported, если его нет
-        sed -i '/<activity.*MainActivity/a \            android:exported="true"' app/src/main/AndroidManifest.xml
+        # Скачиваем свежий Gradle Wrapper 8.2
+        mkdir -p gradle/wrapper
+        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew -o gradlew
+        curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradlew.bat -o gradlew.bat
+        curl -L https://github.com/gradle/gradle/raw/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+        
+        # Настраиваем конфиг
+        cat > gradle/wrapper/gradle-wrapper.properties <<EOL
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-8.2-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOL
+        
+        # Даем права
+        chmod +x gradlew
+
+    - name: Clean and fix manifest
+      run: |
+        # Полная очистка
+        ./gradlew clean
+        rm -rf ~/.gradle/caches
+        
+        # Принудительно добавляем android:exported если его нет
+        if ! grep -q 'android:exported=' app/src/main/AndroidManifest.xml; then
+          sed -i '/<activity.*MainActivity/a \            android:exported="true"' app/src/main/AndroidManifest.xml
+        fi
+        
+        # Проверяем результат
         cat app/src/main/AndroidManifest.xml
 
     - name: Build APK
       run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug --stacktrace
+        ./gradlew assembleDebug --stacktrace --no-daemon
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 3
